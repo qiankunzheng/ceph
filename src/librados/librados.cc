@@ -626,7 +626,14 @@ uint32_t librados::NObjectIteratorImpl::seek(uint32_t pos)
 
 void librados::NObjectIteratorImpl::set_filter(bufferlist &bl)
 {
-  ctx->nlc->filter = bl;
+  assert(ctx);
+  if (ctx->nlc) {
+    ctx->nlc->filter = bl;
+  }
+
+  if (ctx->lc) {
+    ctx->lc->filter = bl;
+  }
 }
 
 void librados::NObjectIteratorImpl::get_next()
