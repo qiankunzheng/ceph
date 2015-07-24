@@ -624,7 +624,7 @@ uint32_t librados::NObjectIteratorImpl::seek(uint32_t pos)
   return r;
 }
 
-void librados::NObjectIteratorImpl::set_filter(bufferlist &bl)
+void librados::NObjectIteratorImpl::set_filter(const bufferlist &bl)
 {
   assert(ctx);
   if (ctx->nlc) {
@@ -740,7 +740,7 @@ uint32_t librados::NObjectIterator::seek(uint32_t pos)
   return impl->seek(pos);
 }
 
-void librados::NObjectIterator::set_filter(bufferlist &bl)
+void librados::NObjectIterator::set_filter(const bufferlist &bl)
 {
   impl->set_filter(bl);
 }
@@ -1541,20 +1541,28 @@ int librados::IoCtx::list_lockers(const std::string &oid, const std::string &nam
   return tmp_lockers.size();
 }
 
-librados::NObjectIterator librados::IoCtx::nobjects_begin()
+librados::NObjectIterator librados::IoCtx::nobjects_begin(
+    const bufferlist &filter)
 {
   rados_list_ctx_t listh;
   rados_nobjects_list_open(io_ctx_impl, &listh);
   NObjectIterator iter((ObjListCtx*)listh);
+  if (filter.length() > 0) {
+    iter.set_filter(filter);
+  }
   iter.get_next();
   return iter;
 }
 
-librados::NObjectIterator librados::IoCtx::nobjects_begin(uint32_t pos)
+librados::NObjectIterator librados::IoCtx::nobjects_begin(
+  uint32_t pos, const bufferlist &filter)
 {
   rados_list_ctx_t listh;
   rados_nobjects_list_open(io_ctx_impl, &listh);
   NObjectIterator iter((ObjListCtx*)listh);
+  if (filter.length() > 0) {
+    iter.set_filter(filter);
+  }
   iter.seek(pos);
   return iter;
 }
