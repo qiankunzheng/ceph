@@ -2,7 +2,7 @@ AUTOMAKE_OPTIONS = gnu
 ACLOCAL_AMFLAGS = -I m4
 EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec install-deps.sh
 # the "." here makes sure check-local builds gtest and gmock before they are used
-SUBDIRS = . src man doc
+SUBDIRS = . src man doc selinux
 
 EXTRA_DIST += \
 	src/test/run-cli-tests \
@@ -16,11 +16,7 @@ EXTRA_DIST += \
 	udev/95-ceph-osd-alt.rules \
 	share/known_hosts_drop.ceph.com \
 	share/id_dsa_drop.ceph.com \
-	share/id_dsa_drop.ceph.com.pub \
-	selinux/ceph.te \
-	selinux/ceph.fc \
-	selinux/ceph.if \
-	selinux/ceph_selinux.8
+	share/id_dsa_drop.ceph.com.pub
 
 # why is it so hard to make autotools to this?
 install-data-local::
