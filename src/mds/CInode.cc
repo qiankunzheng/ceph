@@ -3685,7 +3685,7 @@ void CInode::validate_disk_state(CInode::validated_data *results,
      * Fetch backtrace and set tag if tag is non-empty
      */
     void fetch_backtrace_and_tag(CInode *in, std::string tag,
-                                 Context *fin, bufferlist *bt)
+                                 Context *fin, int *bt_r, bufferlist *bt)
     {
       int64_t pool;
       if (in->is_dir())
@@ -3696,7 +3696,10 @@ void CInode::validate_disk_state(CInode::validated_data *results,
       object_t oid = CInode::get_object_name(in->ino(), frag_t(), "");
 
       ObjectOperation fetch;
-      fetch.getxattr("parent", bt, NULL);
+
+      fetch.getxattr("parent", bt, bt_r);
+      // We want to tag even if we get ENODATA fetching the backtrace
+      fetch.set_last_op_flags(CEPH_OSD_OP_FLAG_FAILOK);
       if (!tag.empty()) {
         bufferlist tag_bl;
         ::encode(tag, tag_bl);
@@ -3734,7 +3737,8 @@ void CInode::validate_disk_state(CInode::validated_data *results,
       // use a special variant that optionally writes a tag in the same
       // operation.
       const std::string &tag = in->get_parent_dn()->scrub_info()->header->tag;
-      fetch_backtrace_and_tag(in, tag, conf, &bl);
+      fetch_backtrace_and_tag(in, tag, conf,
+                              &results->backtrace.ondisk_read_retval, &bl);
       return false;
     }
 
@@ -3742,9 +3746,12 @@ void CInode::validate_disk_state(CInode::validated_data *results,
       // set up basic result reporting and make sure we got the data
       results->performed_validation = true; // at least, some of it!
       results->backtrace.checked = true;
-      results->backtrace.ondisk_read_retval = rval;
       results->backtrace.passed = false; // we'll set it true if we make it
-      if (rval != 0) {
+
+      // Ignore rval because it's the result of a FAILOK operation
+      // from fetch_backtrace_and_tag: the real result is in
+      // backtrace.ondisk_read_retval
+      if (results->backtrace.ondisk_read_retval != 0) {
         results->backtrace.error_str << "failed to read off disk; see retval";
         return true;
       }
