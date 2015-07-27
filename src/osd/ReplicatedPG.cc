@@ -471,6 +471,15 @@ void ReplicatedPG::wait_for_degraded_object(const hobject_t& soid, OpRequestRef 
   op->mark_delayed("waiting for degraded object");
 }
 
+void ReplicatedPG::block_write_on_degraded_snap(
+  const hobject_t& snap, OpRequestRef op)
+{
+  // otherwise, we'd have blocked in do_op
+  assert(objects_blocked_on_degraded_snap.count(snap.get_head()) == 0);
+  objects_blocked_on_degraded_snap[snap.get_head()] = snap.snap;
+  wait_for_degraded_object(snap, op);
+}
+
 bool ReplicatedPG::maybe_await_blocked_snapset(
   const hobject_t &hoid,
   OpRequestRef op)
@@ -1415,6 +1424,16 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   // degraded object?
   if (write_ordered && is_degraded_or_backfilling_object(head)) {
     wait_for_degraded_object(head, op);
+    return;
+  }
+
+  // blocked on snap?
+  map<hobject_t, snapid_t>::iterator blocked_iter =
+    objects_blocked_on_degraded_snap.find(head);
+  if (write_ordered && blocked_iter != objects_blocked_on_degraded_snap.end()) {
+    hobject_t to_wait_on(head);
+    to_wait_on.snap = blocked_iter->second;
+    wait_for_degraded_object(to_wait_on, op);
     return;
   }
 
@@ -5474,7 +5493,7 @@ int ReplicatedPG::_rollback_to(OpContext *ctx, ceph_osd_op& op)
     assert(is_missing_object(missing_oid));
     dout(20) << "_rollback_to attempted to roll back to a missing object "
 	     << missing_oid << " (requested snapid: ) " << snapid << dendl;
-    wait_for_unreadable_object(missing_oid, ctx->op);
+    block_write_on_degraded_snap(missing_oid, ctx->op);
     return ret;
   }
   if (maybe_handle_cache(ctx->op, true, rollback_to, ret, missing_oid, true)) {
@@ -5501,7 +5520,7 @@ int ReplicatedPG::_rollback_to(OpContext *ctx, ceph_osd_op& op)
     if (is_degraded_or_backfilling_object(rollback_to_sobject)) {
       dout(20) << "_rollback_to attempted to roll back to a degraded object "
 	       << rollback_to_sobject << " (requested snapid: ) " << snapid << dendl;
-      wait_for_degraded_object(rollback_to_sobject, ctx->op);
+      block_write_on_degraded_snap(missing_oid, ctx->op);
       ret = -EAGAIN;
     } else if (rollback_to->obs.oi.soid.snap == CEPH_NOSNAP) {
       // rolling back to the head; we just need to clone it.
@@ -8613,6 +8632,11 @@ void ReplicatedPG::finish_degraded_object(const hobject_t& oid)
       (*i)->complete(0);
     }
   }
+  map<hobject_t, snapid_t>::iterator i = objects_blocked_on_degraded_snap.find(
+    oid.get_head());
+  if (i != objects_blocked_on_degraded_snap.end() &&
+      i->second == oid.snap)
+    objects_blocked_on_degraded_snap.erase(i);
 }
 
 void ReplicatedPG::_committed_pushed_object(
@@ -9210,6 +9234,9 @@ void ReplicatedPG::on_change(ObjectStore::Transaction *t)
   // NOTE: we actually assert that all currently live references are dead
   // by the time the flush for the next interval completes.
   object_contexts.clear();
+
+  // should have been cleared above by finishing all of the degraded objects
+  assert(objects_blocked_on_degraded_snap.empty());
 }
 
 void ReplicatedPG::on_role_change()
