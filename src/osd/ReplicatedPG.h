@@ -118,12 +118,13 @@ public:
     if (scrub_tag.empty()) {
       xattr = "";
     } else {
-      xattr = "scrub_tag";
+      xattr = "_scrub_tag";
     }
     generic_dout(0) << "scrub_tag=" << scrub_tag << dendl;
   }
 
   virtual ~PGLSCephFSFilter() {}
+  virtual bool reject_empty() { return false; }
   virtual bool filter(const std::string &obj_name, bufferlist& xattr_data,
                       bufferlist& outdata);
 };

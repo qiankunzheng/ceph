@@ -552,11 +552,11 @@ bool PGLSCephFSFilter::filter(const std::string &obj_name,
     return false;
   }
 
-  if (!scrub_tag.empty()) {
+  if (!scrub_tag.empty() && xattr_data.length() > 0) {
     std::string tag_ondisk;
     bufferlist::iterator q = xattr_data.begin();
     ::decode(tag_ondisk, q);
-    if (tag_ondisk != scrub_tag) {
+    if (tag_ondisk == scrub_tag) {
       return false;
     }
   }
