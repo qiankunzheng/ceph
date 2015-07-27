@@ -9,13 +9,12 @@
 %{!?python_sitearch: %global python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib(1))")}
 %endif
 
-# Use systemd files on RHEL 7 and above and in SUSE/openSUSE.
-# Note: We don't install unit files for the services yet. For now,
-# the _with_systemd variable only implies that we'll install
-# /etc/tmpfiles.d/ceph.conf in order to set up the socket directory in
-# /var/run/ceph.
+# Use systemd files when possible.
 %if 0%{?fedora} || 0%{?rhel} >= 7 || 0%{?suse_version}
   %global _with_systemd 1
+  %if 0%{?rhel} || 0%{?fedora}
+    %global _unitdir /usr/lib/systemd/system
+  %endif
 %endif
 
 Name:		ceph
@@ -493,10 +492,7 @@ export RPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed -e 's/i386/i486/'`
 		--prefix=/usr \
 		--localstatedir=/var \
 		--sysconfdir=/etc \
-%if 0%{?rhel} || 0%{?fedora}
-		--with-systemd-libexec-dir=/usr/lib/systemd/system \
-%endif
-%if 0%{?opensuse} || 0%{?suse_version}
+%if 0%{?_with_systemd}
 		--with-systemdsystemunitdir=%_unitdir \
 %endif
 		--docdir=%{_docdir}/ceph \
@@ -550,13 +546,19 @@ make -j$(getconf _NPROCESSORS_ONLN) check-local
 make DESTDIR=$RPM_BUILD_ROOT install
 find $RPM_BUILD_ROOT -type f -name "*.la" -exec rm -f {} ';'
 find $RPM_BUILD_ROOT -type f -name "*.a" -exec rm -f {} ';'
-install -D src/init-ceph $RPM_BUILD_ROOT%{_initrddir}/ceph
-install -D src/init-radosgw $RPM_BUILD_ROOT%{_initrddir}/ceph-radosgw
-install -D src/init-rbdmap $RPM_BUILD_ROOT%{_initrddir}/rbdmap
 install -D src/rbdmap $RPM_BUILD_ROOT%{_sysconfdir}/ceph/rbdmap
 %if 0%{?_with_systemd}
   install -m 0644 -D systemd/ceph.tmpfiles.d $RPM_BUILD_ROOT%{_tmpfilesdir}/%{name}.conf
   install -m 0644 -D systemd/ceph-rgw.tmpfiles.d $RPM_BUILD_ROOT%{_tmpfilesdir}/%{name}-rgw.conf
+  install -m 0644 -D systemd/ceph-osd@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-osd@.service
+  install -m 0644 -D systemd/ceph-mon@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-mon@.service
+  install -m 0644 -D systemd/ceph-mds@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-mds@.service
+  install -m 0644 -D systemd/ceph-radosgw@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-radosgw@.service
+  install -m 0644 -D systemd/ceph.target $RPM_BUILD_ROOT%{_unitdir}/ceph.target
+%else
+  install -D src/init-ceph $RPM_BUILD_ROOT%{_initrddir}/ceph
+  install -D src/init-radosgw $RPM_BUILD_ROOT%{_initrddir}/ceph-radosgw
+  install -D src/init-rbdmap $RPM_BUILD_ROOT%{_initrddir}/rbdmap
 %endif
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
 ln -sf ../../etc/init.d/ceph %{buildroot}/%{_sbindir}/rcceph
@@ -708,6 +710,7 @@ mkdir -p %{_localstatedir}/run/ceph/
 %{_unitdir}/ceph-mds@.service
 %{_unitdir}/ceph-mon@.service
 %{_unitdir}/ceph-osd@.service
+%{_unitdir}/ceph-radosgw@.service
 %{_unitdir}/ceph.target
 %endif
 %{_sbindir}/ceph-disk
