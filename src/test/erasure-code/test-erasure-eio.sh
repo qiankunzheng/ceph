@@ -113,11 +113,8 @@ function rados_get_data_eio() {
     shift
     local shard_id=$1
     shift
-    local osd_state=$1
-    shift
 
     # inject eio to speificied shard
-    # OSD with eio injection will crash at reading object
     #
     local poolname=pool-jerasure
     local objname=obj-eio-$$-$shard_id
@@ -128,18 +125,18 @@ function rados_get_data_eio() {
     set_config osd $osd_id filestore_debug_inject_read_err true || return 1
     CEPH_ARGS='' ./ceph --admin-daemon $dir/ceph-osd.$osd_id.asok \
              injectdataerr $poolname $objname $shard_id || return 1
-    set_config osd $osd_id filestore_fail_eio false || return 1
 
-    rados_put_get $dir $poolname $objname || return 1
-    TIMEOUT=1 wait_for_osd $osd_state $osd_id || return 1
+    rados_put_get $dir $poolname $objname
+    [ $? = "1" ] || return 1
+    return 0
 }
 
 #
 # These two test cases try to validate the following behavior:
 #  For object on EC pool, if there is one shard having read error (
-#  either primary or replica), it will trigger OSD crash.
+#  either primary or replica), client gets the read error back.
 #
-function TEST_rados_get_without_subreadall_eio_shard_0() {
+function TEST_rados_get_subread_eio_shard_0() {
     local dir=$1
     setup_osds false || return 1
 
@@ -147,11 +144,11 @@ function TEST_rados_get_without_subreadall_eio_shard_0() {
     create_erasure_coded_pool $poolname || return 1
     # inject eio on primary OSD (0)
     local shard_id=0
-    rados_get_data_eio $dir $shard_id down || return 1
+    rados_get_data_eio $dir $shard_id || return 1
     delete_pool $poolname
 }
 
-function TEST_rados_get_without_subreadall_eio_shard_1() {
+function TEST_rados_get_subread_eio_shard_1() {
     local dir=$1
     setup_osds false || return 1
 
@@ -159,56 +156,9 @@ function TEST_rados_get_without_subreadall_eio_shard_1() {
     create_erasure_coded_pool $poolname || return 1
     # inject eio into replica OSD (1)
     local shard_id=1
-    rados_get_data_eio $dir $shard_id down || return 1
+    rados_get_data_eio $dir $shard_id || return 1
     delete_pool $poolname
 }
-
-
-: <<'DISABLED_TESTS'
-# this test case is aimed to test the fix of https://github.com/ceph/ceph/pull/2952
-# this test case can test both client read and recovery read on EIO
-# but at this moment, above pull request ONLY resolves client read on EIO
-# so this case will fail at function *rados_put_get* when one OSD out
-# so disable this case for now until both crashes of client read and recovery read
-# on EIO to be fixed
-#
-
-function TEST_rados_get_with_subreadall_eio_shard_0() {
-    local dir=$1
-    local shard_id=0
-
-    setup_osds true || return 1
-
-    local poolname=pool-jerasure
-    create_erasure_coded_pool $poolname || return 1
-    # inject eio on primary OSD (0)
-    local shard_id=0
-    rados_get_data_eio $dir $shard_id up || return 1
-
-    check_pg_status $pg "inconsistent" || return 1
-    delete_pool $poolname
-}
-
-function TEST_rados_get_with_subreadall_eio_shard_1() {
-    local dir=$1
-    local shard_id=0
-
-    setup_osds true || return 1
-
-    local poolname=pool-jerasure
-    create_erasure_coded_pool $poolname || return 1
-    # inject eio on replica OSD (1)
-    local shard_id=1
-    rados_get_data_eio $dir $shard_id up || return 1
-
-    # the reason to skip this check when current shardid != 0 is that the first
-    # k chunks returned is not always containing current shardid, so this pg may
-    # not be marked as inconsistent. However, primary OSD (when shard_id == 0) is
-    # always the faster one normally, so we can check pg status.
-    ## check_pg_status $pg "inconsistent" || return 1
-    delete_pool $poolname
-}
-DISABLED_TESTS
 
 main test-erasure-eio "$@"
 
