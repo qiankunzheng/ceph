@@ -74,6 +74,7 @@ void PG::get(const string &tag)
 {
   ref.inc();
 #ifdef PG_DEBUG_REFS
+  dout(20) << __func__ << ": " << info.pgid << " get " << tag << dendl;
   Mutex::Locker l(_ref_id_lock);
   if (!_tag_counts.count(tag)) {
     _tag_counts[tag] = 0;
@@ -85,6 +86,7 @@ void PG::get(const string &tag)
 void PG::put(const string &tag)
 {
 #ifdef PG_DEBUG_REFS
+  dout(20) << __func__ << ": " << info.pgid << " put " << tag << dendl;
   {
     Mutex::Locker l(_ref_id_lock);
     assert(_tag_counts.count(tag));
@@ -227,6 +229,7 @@ PG::PG(OSDService *o, OSDMapRef curmap,
 PG::~PG()
 {
 #ifdef PG_DEBUG_REFS
+  derr << "remove pgid:" << info.pgid << dendl;
   osd->remove_pgid(info.pgid, this);
 #endif
 }

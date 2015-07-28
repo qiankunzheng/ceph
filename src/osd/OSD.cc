@@ -2306,9 +2306,12 @@ int OSD::shutdown()
         ++p) {
       dout(20) << " kicking pg " << p->first << dendl;
       p->second->lock();
+      dout(20) << "  pg ref count = " << p->second->ref.read() << dendl;
       p->second->on_shutdown();
       p->second->unlock();
+      dout(20) << "  pg ref count = " << p->second->ref.read() << dendl;
       p->second->osr->flush();
+      dout(20) << "  pg ref count = " << p->second->ref.read() << dendl;
     }
   }
   
@@ -2414,7 +2417,7 @@ int OSD::shutdown()
 
   // Remove PGs
 #ifdef PG_DEBUG_REFS
-  service.dump_live_pgids();
+  // service.dump_live_pgids();
 #endif
   {
     RWLock::RLocker l(pg_map_lock);
