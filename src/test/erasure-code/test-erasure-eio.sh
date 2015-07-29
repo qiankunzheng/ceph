@@ -77,7 +77,7 @@ function delete_pool() {
     ./ceph osd erasure-code-profile rm myprofile
 }
 
-function rados_put_get() {
+function rados_put() {
     local dir=$1
     local poolname=$2
     local objname=${3:-SOMETHING}
@@ -89,9 +89,32 @@ function rados_put_get() {
     # get and put an object, compare they are equal
     #
     ./rados --pool $poolname put $objname $dir/ORIGINAL || return 1
+}
+
+function rados_get() {
+    local dir=$1
+    local poolname=$2
+    local objname=${3:-SOMETHING}
+
+    #
+    # get an object, compare with $dir/ORIGINAL
+    #
     ./rados --pool $poolname get $objname $dir/COPY || return 1
     diff $dir/ORIGINAL $dir/COPY || return 1
     rm $dir/COPY
+}
+
+function rados_put_get() {
+    local dir=$1
+    local poolname=$2
+    local objname=${3:-SOMETHING}
+
+    #
+    # get and put an object, compare they are equal
+    #
+    rados_put $dir $poolname $objname || return 1
+    rados_get $dir $poolname $objname || return 1
+ 
     #
     # take out the first OSD used to store the object and
     # check the object can still be retrieved, which implies
@@ -101,8 +124,7 @@ function rados_put_get() {
     local last=$((${#initial_osds[@]} - 1))
     ./ceph osd out ${initial_osds[$last]} || return 1
     ! get_osds $poolname $objname | grep '\<'${initial_osds[$last]}'\>' || return 1
-    ./rados --pool $poolname get $objname $dir/COPY || return 1
-    diff $dir/ORIGINAL $dir/COPY || return 1
+    rados_get $dir $poolname $objname || return 1
     ./ceph osd in ${initial_osds[$last]} || return 1
 
     rm $dir/ORIGINAL
@@ -121,14 +143,30 @@ function rados_get_data_eio() {
     local -a initial_osds=($(get_osds $poolname $objname))
     local osd_id=${initial_osds[$shard_id]}
     local last=$((${#initial_osds[@]} - 1))
-    # set_config osd $osd_id filestore_debug_inject_read_err true || return 1
     set_config osd $osd_id filestore_debug_inject_read_err true || return 1
     CEPH_ARGS='' ./ceph --admin-daemon $dir/ceph-osd.$osd_id.asok \
              injectdataerr $poolname $objname $shard_id || return 1
 
-    rados_put_get $dir $poolname $objname
-    [ $? = "1" ] || return 1
-    return 0
+    ! rados_put_get $dir $poolname $objname || return 1
+}
+
+function rados_get_data_bad_size() {
+    local dir=$1
+    shift
+    local shard_id=$1
+    shift
+
+    # inject eio to speificied shard
+    #
+    local poolname=pool-jerasure
+    local objname=obj-size-$$-$shard_id
+    local -a initial_osds=($(get_osds $poolname $objname))
+    local osd_id=${initial_osds[$shard_id]}
+    local last=$((${#initial_osds[@]} - 1))
+    rados_put $dir $poolname $objname || return 1
+    touch $dir/EMPTY
+    objectstore_tool $dir $osd_id $objname set-bytes $dir/EMPTY || return 1
+    ! rados_get $dir $poolname $objname || return 1
 }
 
 #
@@ -157,6 +195,28 @@ function TEST_rados_get_subread_eio_shard_1() {
     # inject eio into replica OSD (1)
     local shard_id=1
     rados_get_data_eio $dir $shard_id || return 1
+    delete_pool $poolname
+}
+
+function TEST_rados_get_bad_size_shard_0() {
+    local dir=$1
+    setup_osds false || return 1
+
+    local poolname=pool-jerasure
+    create_erasure_coded_pool $poolname || return 1
+    local shard_id=0
+    rados_get_data_bad_size $dir $shard_id || return 1
+    delete_pool $poolname
+}
+
+function TEST_rados_get_bad_size_shard_1() {
+    local dir=$1
+    setup_osds false || return 1
+
+    local poolname=pool-jerasure
+    create_erasure_coded_pool $poolname || return 1
+    local shard_id=1
+    rados_get_data_bad_size $dir $shard_id || return 1
     delete_pool $poolname
 }
 
