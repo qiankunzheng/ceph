@@ -150,6 +150,7 @@ using ceph::crypto::MD5;
 #define ERR_MALFORMED_XML        2029
 #define ERR_USER_SUSPENDED       2100
 #define ERR_INTERNAL_ERROR       2200
+#define ERR_NOT_IMPLEMENTED      2201
 
 #ifndef UINT32_MAX
 #define UINT32_MAX (0xffffffffu)
@@ -197,6 +198,7 @@ extern int gen_rand_alphanumeric(CephContext *cct, char *dest, int size);
 extern int gen_rand_alphanumeric_lower(CephContext *cct, char *dest, int size);
 extern int gen_rand_alphanumeric_upper(CephContext *cct, char *dest, int size);
 extern int gen_rand_alphanumeric_no_underscore(CephContext *cct, char *dest, int size);
+extern int gen_rand_alphanumeric_plain(CephContext *cct, char *dest, int size);
 
 extern int gen_rand_alphanumeric_lower(CephContext *cct, string *str, int length);
 

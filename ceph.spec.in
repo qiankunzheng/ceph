@@ -188,7 +188,6 @@ Requires:	librados2 = %{epoch}:%{version}-%{release}
 %if 0%{defined suse_version}
 BuildRequires:	libexpat-devel
 BuildRequires:	FastCGI-devel
-Requires:	apache2-mod_fcgid
 %endif
 %if 0%{?rhel} || 0%{?fedora}
 BuildRequires:	expat-devel
@@ -242,9 +241,6 @@ Group:		System Environment/Libraries
 License:	LGPL-2.0
 Requires:	librados2 = %{epoch}:%{version}-%{release}
 Obsoletes:	python-ceph < %{epoch}:%{version}-%{release}
-%if 0%{defined suse_version}
-%py_requires
-%endif
 %description -n python-rados
 This package contains Python libraries for interacting with Cephs RADOS
 object store.

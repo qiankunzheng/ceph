@@ -534,7 +534,9 @@ void rgw_perm_to_str(uint32_t mask, char *buf, int len)
 
 uint32_t rgw_str_to_perm(const char *str)
 {
-  if (strcasecmp(str, "read") == 0)
+  if (strcasecmp(str, "") == 0)
+    return RGW_PERM_NONE;
+  else if (strcasecmp(str, "read") == 0)
     return RGW_PERM_READ;
   else if (strcasecmp(str, "write") == 0)
     return RGW_PERM_WRITE;
@@ -543,7 +545,7 @@ uint32_t rgw_str_to_perm(const char *str)
   else if (strcasecmp(str, "full") == 0)
     return RGW_PERM_FULL_CONTROL;
 
-  return 0; // better to return no permission
+  return RGW_PERM_INVALID;
 }
 
 static bool validate_access_key(string& key)
@@ -884,7 +886,7 @@ int RGWAccessKeyPool::generate_key(RGWUserAdminOpState& op_state, std::string *e
   } else if (gen_secret) {
     char secret_key_buf[SECRET_KEY_LEN + 1];
 
-    ret = gen_rand_base64(g_ceph_context, secret_key_buf, sizeof(secret_key_buf));
+    ret = gen_rand_alphanumeric_plain(g_ceph_context, secret_key_buf, sizeof(secret_key_buf));
     if (ret < 0) {
       set_err_msg(err_msg, "unable to generate secret key");
       return ret;
@@ -998,7 +1000,7 @@ int RGWAccessKeyPool::modify_key(RGWUserAdminOpState& op_state, std::string *err
 
     int ret;
     int key_buf_size = sizeof(secret_key_buf);
-    ret  = gen_rand_base64(g_ceph_context, secret_key_buf, key_buf_size);
+    ret = gen_rand_alphanumeric_plain(g_ceph_context, secret_key_buf, key_buf_size);
     if (ret < 0) {
       set_err_msg(err_msg, "unable to generate secret key");
       return ret;
@@ -1228,6 +1230,11 @@ int RGWSubUserPool::check_op(RGWUserAdminOpState& op_state,
 
   if (subuser.empty() && !op_state.will_gen_subuser()) {
     set_err_msg(err_msg, "empty subuser name");
+    return -EINVAL;
+  }
+
+  if (op_state.get_subuser_perm() == RGW_PERM_INVALID) {
+    set_err_msg(err_msg, "invaild subuser access");
     return -EINVAL;
   }
 

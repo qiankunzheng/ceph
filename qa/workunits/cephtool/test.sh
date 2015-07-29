@@ -243,7 +243,7 @@ function test_tiering()
   # test with dirty objects in the tier pool
   # tier pool currently set to 'writeback'
   rados -p cache put /etc/passwd /etc/passwd
-  ceph tell osd.* flush_pg_stats || true
+  ceph tell osd.\* flush_pg_stats || true
   # 1 dirty object in pool 'cache'
   ceph osd tier cache-mode cache forward
   expect_false ceph osd tier cache-mode cache none
@@ -252,7 +252,7 @@ function test_tiering()
   # remove object from tier pool
   rados -p cache rm /etc/passwd
   rados -p cache cache-flush-evict-all
-  ceph tell osd.* flush_pg_stats || true
+  ceph tell osd.\* flush_pg_stats || true
   # no dirty objects in pool 'cache'
   ceph osd tier cache-mode cache forward
   ceph osd tier cache-mode cache none
@@ -369,7 +369,7 @@ function test_tiering()
   rados -p cache4 put foo1 $tmpfile
   rados -p cache4 put foo2 $tmpfile
   rm -f $tmpfile
-  ceph tell osd.* flush_pg_stats || true
+  ceph tell osd.\* flush_pg_stats || true
   ceph df | grep cache4 | grep ' 2 '
   local max_objects=1
   ceph osd pool set cache4 target_max_objects $max_objects
@@ -378,6 +378,8 @@ function test_tiering()
   ceph health | grep WARN | grep cache4
   ceph health detail | grep cache4 | grep 'target max' | grep "${max_objects} objects"
   ceph health detail | grep cache4 | grep 'target max' | grep "${max_bytes}B"
+  ceph tell osd.* flush_pg_stats || true
+  ceph df | grep datapool | grep ' 2 '
   ceph osd tier remove-overlay datapool
   ceph osd tier remove datapool cache4
   ceph osd pool delete cache4 cache4 --yes-i-really-really-mean-it
@@ -1561,7 +1563,7 @@ function test_mon_crushmap_validation()
   touch "${crushtool_path}"
   chmod +x "${crushtool_path}"
   local crushtool_path_old=`ceph-conf --show-config-value crushtool`
-  ceph tell mon.* injectargs --crushtool "${crushtool_path}"
+  ceph tell mon.\* injectargs --crushtool "${crushtool_path}"
 
   printf "%s\n" \
       "#!/bin/sh
@@ -1605,7 +1607,7 @@ function test_mon_crushmap_validation()
   expect_false ceph osd setcrushmap -i $map 2> $TMPFILE
   check_response "Error EINVAL: Failed to parse crushmap: ${crushtool_path}: timed out (${mon_lease} sec)"
 
-  ceph tell mon.* injectargs --crushtool "${crushtool_path_old}"
+  ceph tell mon.\* injectargs --crushtool "${crushtool_path_old}"
 
   rm -f "${crushtool_path}"
 }
@@ -1616,7 +1618,7 @@ function test_mon_ping()
   ceph ping mon.b
   expect_false ceph ping mon.foo
 
-  ceph ping mon.*
+  ceph ping mon.\*
 }
 
 function test_mon_deprecated_commands()

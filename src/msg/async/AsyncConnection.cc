@@ -897,40 +897,40 @@ void AsyncConnection::process()
           break;
         }
     }
-
-    continue;
-
-fail:
-    // clean up state internal variables and states
-    if (state >= STATE_CONNECTING_SEND_CONNECT_MSG &&
-        state <= STATE_CONNECTING_READY) {
-      delete authorizer;
-      authorizer = NULL;
-      got_bad_auth = false;
-    }
-
-    if (state > STATE_OPEN_MESSAGE_THROTTLE_MESSAGE &&
-        state <= STATE_OPEN_MESSAGE_READ_FOOTER_AND_DISPATCH
-        && policy.throttler_messages) {
-      ldout(async_msgr->cct,10) << __func__ << " releasing " << 1
-                          << " message to policy throttler "
-                          << policy.throttler_messages->get_current() << "/"
-                          << policy.throttler_messages->get_max() << dendl;
-      policy.throttler_messages->put();
-    }
-    if (state > STATE_OPEN_MESSAGE_THROTTLE_BYTES &&
-        state <= STATE_OPEN_MESSAGE_READ_FOOTER_AND_DISPATCH) {
-      uint64_t message_size = current_header.front_len + current_header.middle_len + current_header.data_len;
-      if (policy.throttler_bytes) {
-        ldout(async_msgr->cct,10) << __func__ << " releasing " << message_size
-                            << " bytes to policy throttler "
-                            << policy.throttler_bytes->get_current() << "/"
-                            << policy.throttler_bytes->get_max() << dendl;
-        policy.throttler_bytes->put(message_size);
-      }
-    }
-    fault();
   } while (prev_state != state);
+
+  return;
+
+ fail:
+  // clean up state internal variables and states
+  if (state >= STATE_CONNECTING_SEND_CONNECT_MSG &&
+      state <= STATE_CONNECTING_READY) {
+    delete authorizer;
+    authorizer = NULL;
+    got_bad_auth = false;
+  }
+
+  if (state > STATE_OPEN_MESSAGE_THROTTLE_MESSAGE &&
+      state <= STATE_OPEN_MESSAGE_READ_FOOTER_AND_DISPATCH
+      && policy.throttler_messages) {
+    ldout(async_msgr->cct,10) << __func__ << " releasing " << 1
+                        << " message to policy throttler "
+                        << policy.throttler_messages->get_current() << "/"
+                        << policy.throttler_messages->get_max() << dendl;
+    policy.throttler_messages->put();
+  }
+  if (state > STATE_OPEN_MESSAGE_THROTTLE_BYTES &&
+      state <= STATE_OPEN_MESSAGE_READ_FOOTER_AND_DISPATCH) {
+    uint64_t message_size = current_header.front_len + current_header.middle_len + current_header.data_len;
+    if (policy.throttler_bytes) {
+      ldout(async_msgr->cct,10) << __func__ << " releasing " << message_size
+                          << " bytes to policy throttler "
+                          << policy.throttler_bytes->get_current() << "/"
+                          << policy.throttler_bytes->get_max() << dendl;
+      policy.throttler_bytes->put(message_size);
+    }
+  }
+  fault();
 }
 
 int AsyncConnection::_process_connection()
@@ -1920,6 +1920,13 @@ int AsyncConnection::send_message(Message *m)
 {
   ldout(async_msgr->cct, 10) << __func__ << " m=" << m << dendl;
 
+  // optimistic think it's ok to encode(actually may broken now)
+  if (!m->get_priority())
+    m->set_priority(async_msgr->get_default_send_priority());
+
+  m->get_header().src = async_msgr->get_myname();
+  m->set_connection(this);
+
   if (async_msgr->get_myaddr() == get_peer_addr()) { //loopback connection
    ldout(async_msgr->cct, 20) << __func__ << " " << *m << " local" << dendl;
    Mutex::Locker l(write_lock);
@@ -1934,10 +1941,6 @@ int AsyncConnection::send_message(Message *m)
 
   bufferlist bl;
   uint64_t f = get_features();
-
-  // optimistic think it's ok to encode(actually may broken now)
-  if (!m->get_priority())
-    m->set_priority(async_msgr->get_default_send_priority());
 
   // TODO: Currently not all messages supports reencode like MOSDMap, so here
   // only let fast dispatch support messages prepare message
@@ -2185,8 +2188,6 @@ void AsyncConnection::prepare_send_message(uint64_t features, Message *m, buffer
   ldout(async_msgr->cct, 20) << __func__ << " m" << " " << *m << dendl;
 
   // associate message with Connection (for benefit of encode_payload)
-  m->get_header().src = async_msgr->get_myname();
-  m->set_connection(this);
   if (m->empty_payload())
     ldout(async_msgr->cct, 20) << __func__ << " encoding features "
                                << features << " " << m << " " << *m << dendl;

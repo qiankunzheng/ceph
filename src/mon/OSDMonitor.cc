@@ -779,6 +779,7 @@ protected:
   };
   friend std::ostream &operator<<(ostream& out, const lowprecision_t& v);
 
+  using OSDUtilizationDumper<TextTable>::dump_item;
   virtual void dump_item(const CrushTreeDumper::Item &qi,
 			 float &reweight,
 			 int64_t kb,
@@ -857,6 +858,7 @@ public:
   }
 
 protected:
+  using OSDUtilizationDumper<Formatter>::dump_item;
   virtual void dump_item(const CrushTreeDumper::Item &qi,
 			 float &reweight,
 			 int64_t kb,
@@ -1360,13 +1362,13 @@ bool OSDMonitor::preprocess_get_osdmap(MonOpRequestRef op)
   epoch_t last = osdmap.get_epoch();
   int max = g_conf->osd_map_message_max;
   for (epoch_t e = MAX(first, m->get_full_first());
-       e < MIN(last, m->get_full_last()) && max > 0;
+       e <= MIN(last, m->get_full_last()) && max > 0;
        ++e, --max) {
     int r = get_version_full(e, reply->maps[e]);
     assert(r >= 0);
   }
   for (epoch_t e = MAX(first, m->get_inc_first());
-       e < MIN(last, m->get_inc_last()) && max > 0;
+       e <= MIN(last, m->get_inc_last()) && max > 0;
        ++e, --max) {
     int r = get_version(e, reply->incremental_maps[e]);
     assert(r >= 0);
@@ -2853,7 +2855,7 @@ namespace {
     CACHE_TARGET_FULL_RATIO,
     CACHE_MIN_FLUSH_AGE, CACHE_MIN_EVICT_AGE,
     ERASURE_CODE_PROFILE, MIN_READ_RECENCY_FOR_PROMOTE,
-    WRITE_FADVISE_DONTNEED};
+    WRITE_FADVISE_DONTNEED, MIN_WRITE_RECENCY_FOR_PROMOTE};
 
   std::set<osd_pool_get_choices>
     subtract_second_from_first(const std::set<osd_pool_get_choices>& first,
@@ -3127,8 +3129,8 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
         << " pool '" << poolstr << "' (" << pool << ")"
         << " object '" << fullobjname << "' ->"
         << " pg " << pgid << " (" << mpgid << ")"
-        << " -> up (" << up << ", p" << up_p << ") acting ("
-        << acting << ", p" << acting_p << ")";
+        << " -> up (" << pg_vector_string(up) << ", p" << up_p << ") acting ("
+        << pg_vector_string(acting) << ", p" << acting_p << ")";
       rdata.append(ds);
     }
   } else if ((prefix == "osd scrub" ||
@@ -3304,7 +3306,8 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
       ("cache_min_evict_age", CACHE_MIN_EVICT_AGE)
       ("erasure_code_profile", ERASURE_CODE_PROFILE)
       ("min_read_recency_for_promote", MIN_READ_RECENCY_FOR_PROMOTE)
-      ("write_fadvise_dontneed", WRITE_FADVISE_DONTNEED);
+      ("write_fadvise_dontneed", WRITE_FADVISE_DONTNEED)
+      ("min_write_recency_for_promote", MIN_WRITE_RECENCY_FOR_PROMOTE);
 
     typedef std::set<osd_pool_get_choices> choices_set_t;
 
@@ -3453,6 +3456,10 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
 			   p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ?
 			   "true" : "false");
 	    break;
+	  case MIN_WRITE_RECENCY_FOR_PROMOTE:
+	    f->dump_int("min_write_recency_for_promote",
+			p->min_write_recency_for_promote);
+	    break;
 	}
 	f->close_section();
 	f->flush(rdata);
@@ -3543,6 +3550,10 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
 	    ss << "write_fadvise_dontneed: " <<
 	      (p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ?
 	       "true" : "false") << "\n";
+	    break;
+	  case MIN_WRITE_RECENCY_FOR_PROMOTE:
+	    ss << "min_write_recency_for_promote: " <<
+	      p->min_write_recency_for_promote << "\n";
 	    break;
 	}
 	rdata.append(ss.str());
@@ -3941,7 +3952,7 @@ void OSDMonitor::get_pools_health(
       } else if (warn_threshold > 0 &&
 		 sum.num_bytes >= pool.quota_max_bytes*warn_threshold) {
         ss << "pool '" << pool_name
-           << "' has " << si_t(sum.num_bytes) << " objects"
+           << "' has " << si_t(sum.num_bytes) << " bytes"
            << " (max " << si_t(pool.quota_max_bytes) << ")";
         status = HEALTH_WARN;
       }
@@ -4855,6 +4866,12 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       ss << "expecting value 'true', 'false', '0', or '1'";
       return -EINVAL;
     }
+  } else if (var == "min_write_recency_for_promote") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.min_write_recency_for_promote = n;
   } else {
     ss << "unrecognized variable '" << var << "'";
     return -EINVAL;
@@ -6079,7 +6096,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
     if (osdmap.exists(id)) {
       pending_inc.new_weight[id] = ww;
-      ss << "reweighted osd." << id << " to " << w << " (" << ios::hex << ww << ios::dec << ")";
+      ss << "reweighted osd." << id << " to " << w << " (" << std::hex << ww << std::dec << ")";
       getline(ss, rs);
       wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
 						get_last_committed() + 1));
@@ -6972,6 +6989,7 @@ done:
     ntp->hit_set_count = g_conf->osd_tier_default_cache_hit_set_count;
     ntp->hit_set_period = g_conf->osd_tier_default_cache_hit_set_period;
     ntp->min_read_recency_for_promote = g_conf->osd_tier_default_cache_min_read_recency_for_promote;
+    ntp->min_write_recency_for_promote = g_conf->osd_tier_default_cache_min_write_recency_for_promote;
     ntp->hit_set_params = hsp;
     ntp->target_max_bytes = size;
     ss << "pool '" << tierpoolstr << "' is now (or already was) a cache tier of '" << poolstr << "'";
