@@ -715,13 +715,13 @@ mkdir -p %{_localstatedir}/run/ceph/
 %{_unitdir}/ceph.target
 %else
 %{_initrddir}/ceph
+%{_sbindir}/rcceph
 %endif
 %{_sbindir}/ceph-disk
 %{_sbindir}/ceph-disk-activate
 %{_sbindir}/ceph-disk-prepare
 %{_sbindir}/ceph-disk-udev
 %{_sbindir}/ceph-create-keys
-%{_sbindir}/rcceph
 %if 0%{?rhel} >= 7 || 0%{?fedora}
 %{_sbindir}/mount.ceph
 %else
@@ -861,7 +861,6 @@ fi
 %{_bindir}/radosgw-admin
 %{_mandir}/man8/radosgw.8*
 %{_mandir}/man8/radosgw-admin.8*
-%{_sbindir}/rcceph-radosgw
 %config(noreplace) %{_sysconfdir}/logrotate.d/radosgw
 %config %{_sysconfdir}/bash_completion.d/radosgw-admin
 %dir %{_localstatedir}/log/radosgw/
@@ -870,6 +869,7 @@ fi
 %{_tmpfilesdir}/%{name}-rgw.conf
 %else
 %{_initrddir}/ceph-radosgw
+%{_sbindir}/rcceph-radosgw
 %endif
 
 %post radosgw
