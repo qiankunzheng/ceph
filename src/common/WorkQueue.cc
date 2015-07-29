@@ -262,7 +262,7 @@ void ThreadPool::drain(WorkQueue_* wq)
   ldout(cct,10) << "drain" << dendl;
   _lock.Lock();
   _draining++;
-  while (processing || (wq != NULL && !wq->_empty()))
+  while (processing && (wq != NULL || wq->_empty()))
     _wait_cond.Wait(_lock);
   _draining--;
   _lock.Unlock();
